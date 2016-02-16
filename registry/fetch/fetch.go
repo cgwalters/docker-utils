@@ -365,7 +365,9 @@ func (re *RegistryEndpoint) FetchLayers(img *ImageRef, dest string) ([]string, e
 			logrus.Debugf("[FetchLayers] ended up at %q", resp.Request.URL.String())
 			logrus.Debugf("[FetchLayers] response %#v", resp)
 
-			cmd := exec.Command("dlayer-ostree", "--repo=repo", "importone", path.Join(dest, id, "json"));
+			cmd := exec.Command("dlayer-ostree", "--repo=repo", "importone",
+					"--branch=docker/" + img.Host() + "/" + img.Name() + "/" + img.Tag(),
+					path.Join(dest, id, "json"));
 			inpipe, err := cmd.StdinPipe();
 			if err != nil {
 				return err
