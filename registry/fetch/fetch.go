@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"os/exec"
 	"path"
 	"strings"
 
@@ -297,8 +298,18 @@ func (re *RegistryEndpoint) FetchLayers(img *ImageRef, dest string) ([]string, e
 		if err := os.MkdirAll(path.Join(dest, id), 0755); err != nil {
 			return emptySet, err
 		}
+
+                ostreeid := "dockerimg/" + id;
+
+                out, err := exec.Command("ostree", "--repo=repo", "rev-parse", ostreeid).Output()
+		if err == nil {
+			logrus.Debugf("%s => %s", ostreeid, out)
+			continue
+                } else {
+			logrus.Debugf("No previous commit for %s", ostreeid);
+		}
 		// get the json file first
-		err := func() error {
+		err = func() error {
 			url := fmt.Sprintf("https://%s/v1/images/%s/json", endpoint, id)
 			req, err := http.NewRequest("GET", url, nil)
 			if err != nil {
@@ -353,12 +364,30 @@ func (re *RegistryEndpoint) FetchLayers(img *ImageRef, dest string) ([]string, e
 
 			logrus.Debugf("[FetchLayers] ended up at %q", resp.Request.URL.String())
 			logrus.Debugf("[FetchLayers] response %#v", resp)
-			fh, err := os.Create(path.Join(dest, id, "layer.tar"))
+
+			cmd := exec.Command("dlayer-ostree", "--repo=repo", "importone", path.Join(dest, id, "json"));
+			inpipe, err := cmd.StdinPipe();
 			if err != nil {
 				return err
 			}
-			defer fh.Close()
-			if _, err := io.Copy(fh, resp.Body); err != nil {
+			cmd.Stderr = os.Stderr
+
+			err = cmd.Start()
+			if err != nil {
+				return err
+			}
+
+			if _, err := io.Copy(inpipe, resp.Body); err != nil {
+				return err
+			}
+
+			err = inpipe.Close()
+			if err != nil {
+				return err
+			}
+
+			err = cmd.Wait()
+			if err != nil {
 				return err
 			}
 			return nil
